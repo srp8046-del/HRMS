@@ -1,0 +1,2 @@
+username,email,password,display_name,employee_code,designation,role,manager_employee_code,team_leader_employee_code,can_view_all,can_upload
+rahul01,rahul@example.com,Welcome123,Rahul Kumar,LEE001,Tele Sales Executive,tele_sales_executive,LEE100,LEE200,false,false
