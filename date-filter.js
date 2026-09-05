@@ -3,19 +3,45 @@
   const URL='https://slsiwqvbdcdcgrkufsln.supabase.co';
   const KEY_SUP='sb_publishable_dtWiemrqMQHEXN5SGLGnPw_VGs-ottO';
   const pad=n=>String(n).padStart(2,'0');
+  const client=window.supabase.createClient(URL,KEY_SUP,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true,storage:window.localStorage}});
   let saved=JSON.parse(localStorage.getItem(KEY)||'null')||{};
-  const now=new Date();
-  let start=saved.start||`${now.getFullYear()}-${pad(now.getMonth()+1)}-01`;
-  let end=saved.end||`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
-  let rangeData=null;
-  function build(){const h=document.getElementById('dateFilter');if(!h)return;h.style.display='block';h.innerHTML=`<div class="date-filter-inner"><b class="date-filter-label">DATE RANGE</b><label>Start <input id="hrmsStartDate" type="date" value="${start}"></label><label>End <input id="hrmsEndDate" type="date" value="${end}"></label><button id="applyDateRange" class="primary">Apply</button><button id="clearDateRange" class="ghost">Current Month</button></div>`;document.getElementById('applyDateRange').onclick=apply;document.getElementById('clearDateRange').onclick=()=>{const x=new Date();document.getElementById('hrmsStartDate').value=`${x.getFullYear()}-${pad(x.getMonth()+1)}-01`;document.getElementById('hrmsEndDate').value=`${x.getFullYear()}-${pad(x.getMonth()+1)}-${pad(x.getDate())}`;apply()}}
+  let start=saved.start||'',end=saved.end||'',rangeData=null;
+  const esc=v=>String(v??'').replace(/[&<>'\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','\"':'&quot;'}[c]));
+  const status=s=>{const x=s||'NP';return `<span class="status ${esc(x)}">${esc(x)}</span>`};
+  function build(){const h=document.getElementById('dateFilter');if(!h)return;h.style.display='block';h.innerHTML=`<div class="date-filter-inner"><b class="date-filter-label">DATE RANGE</b><label>Start <input id="hrmsStartDate" type="date" value="${start}"></label><label>End <input id="hrmsEndDate" type="date" value="${end}"></label><button id="applyDateRange" class="primary">Apply</button><button id="clearDateRange" class="ghost">Latest Month</button></div>`;document.getElementById('applyDateRange').onclick=apply;document.getElementById('clearDateRange').onclick=latestMonth}
   function apply(){const s=document.getElementById('hrmsStartDate').value,e=document.getElementById('hrmsEndDate').value;if(!s||!e||s>e){alert('Please select a valid Start and End date.');return}start=s;end=e;localStorage.setItem(KEY,JSON.stringify({start,end}));const a=document.querySelector('.nav-item.active');if(a)sessionStorage.setItem(PAGE_KEY,a.dataset.page||'dashboard');location.reload()}
-  function esc(v){return String(v??'').replace(/[&<>'\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','\"':'&quot;'}[c]))}
-  function status(s){const x=s||'NP';return `<span class="status ${esc(x)}">${esc(x)}</span>`}
-  async function getRangeData(){try{const client=window.supabase.createClient(URL,KEY_SUP,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true,storage:window.localStorage}});if(!saved.start&&!saved.end){const latest=await client.from('hrms_final_attendance').select('attendance_date').order('attendance_date',{ascending:false}).limit(1).maybeSingle();const d=latest?.data?.attendance_date;if(d){start=String(d).slice(0,8)+'01';const y=Number(String(d).slice(0,4)),m=Number(String(d).slice(5,7));end=`${y}-${pad(m)}-${pad(new Date(Date.UTC(y,m,0)).getUTCDate())`;localStorage.setItem(KEY,JSON.stringify({start,end}))}}const r=await client.functions.invoke('hrms-dashboard',{body:{start_date:start,end_date:end}});if(r.error||r.data?.error)return null;rangeData=r.data;return rangeData}catch(e){return null}}
-  function renderRangeAttendance(){const content=document.getElementById('content');if(!content||!rangeData)return;const em=rangeData.employees||[],at=rangeData.attendance||[];const rows=em.map(e=>{const n=at.filter(a=>a.employee_code===e.employee_code).length;return `<tr><td><strong>${esc(e.employee_name)}</strong></td><td>${esc(e.employee_code)}</td><td>${esc(e.designation||'—')}</td><td>${n}</td><td><button class="primary range-cal" data-code="${esc(e.employee_code)}">Open Calendar</button></td></tr>`}).join('');content.innerHTML=`<div class="hero"><div><div class="eyebrow">ATTENDANCE</div><h3>Attendance</h3><div class="muted">${esc(start)} to ${esc(end)} · BIO + TOS final attendance.</div></div></div><div class="table-wrap"><table class="table"><thead><tr><th>Employee</th><th>Code</th><th>Designation</th><th>Records</th><th>Action</th></tr></thead><tbody>${rows||'<tr><td colspan="5">No attendance records found for selected dates.</td></tr>'}</tbody></table></div>`;document.querySelectorAll('.range-cal').forEach(b=>b.onclick=()=>renderCalendar(b.dataset.code))}
-  function renderCalendar(code){const content=document.getElementById('content'),e=(rangeData.employees||[]).find(x=>x.employee_code===code),rows=(rangeData.attendance||[]).filter(a=>a.employee_code===code).sort((a,b)=>String(a.attendance_date).localeCompare(String(b.attendance_date)));content.innerHTML=`<div class="section"><button class="ghost" id="rangeBack">← Back</button><div class="hero"><div><div class="eyebrow">EMPLOYEE ATTENDANCE</div><h3>${esc(e?.employee_name||code)}</h3><div class="muted">${esc(code)} · ${esc(start)} to ${esc(end)}</div></div></div><div class="table-wrap"><table class="table"><thead><tr><th>Date</th><th>Final</th><th>BIO</th><th>TOS</th></tr></thead><tbody>${rows.length?rows.map(r=>`<tr><td>${esc(r.attendance_date)}</td><td>${status(r.final_status)}</td><td>${status(r.bio_status)}</td><td>${status(r.tos_status)}</td></tr>`).join(''):'<tr><td colspan="4">No attendance records.</td></tr>'}</tbody></table></div></div>`;document.getElementById('rangeBack').onclick=renderRangeAttendance}
+  async function latestMonth(){try{const r=await client.from('hrms_final_attendance').select('attendance_date').order('attendance_date',{ascending:false}).limit(1).maybeSingle();const d=r.data?.attendance_date;if(!d)throw new Error('No attendance data found');const y=Number(String(d).slice(0,4)),m=Number(String(d).slice(5,7));start=`${y}-${pad(m)}-01`;end=`${y}-${pad(m)}-${pad(new Date(Date.UTC(y,m,0)).getUTCDate())}`;localStorage.setItem(KEY,JSON.stringify({start,end}));location.reload()}catch(e){alert(e.message||'Unable to find latest attendance month.')}}
+  async function loadRange(){
+    try{
+      const {data:{session}}=await client.auth.getSession();
+      if(!session)return null;
+      if(!start||!end){
+        const r=await client.from('hrms_final_attendance').select('attendance_date').order('attendance_date',{ascending:false}).limit(1).maybeSingle();
+        const d=r.data?.attendance_date;
+        if(d){const y=Number(String(d).slice(0,4)),m=Number(String(d).slice(5,7));start=`${y}-${pad(m)}-01`;end=`${y}-${pad(m)}-${pad(new Date(Date.UTC(y,m,0)).getUTCDate())}`;localStorage.setItem(KEY,JSON.stringify({start,end}))}
+      }
+      if(!start||!end)return null;
+      const r=await client.functions.invoke('hrms-dashboard',{body:{start_date:start,end_date:end}});
+      if(r.error||r.data?.error)return null;
+      rangeData=r.data;return rangeData;
+    }catch(e){return null}
+  }
+  function renderRangeAttendance(){
+    const content=document.getElementById('content');if(!content||!rangeData)return;
+    const em=rangeData.employees||[],at=rangeData.attendance||[];
+    const rows=em.map(e=>{const n=at.filter(a=>a.employee_code===e.employee_code).length;return `<tr><td><strong>${esc(e.employee_name)}</strong></td><td>${esc(e.employee_code)}</td><td>${esc(e.designation||'—')}</td><td>${n}</td><td><button class="primary range-cal" data-code="${esc(e.employee_code)}">Open Calendar</button></td></tr>`}).join('');
+    content.innerHTML=`<div class="hero"><div><div class="eyebrow">ATTENDANCE</div><h3>Attendance</h3><div class="muted">${esc(start)} to ${esc(end)} · ${rangeData.attendance_count??at.length} records loaded.</div></div></div><div class="table-wrap"><table class="table"><thead><tr><th>Employee</th><th>Code</th><th>Designation</th><th>Records</th><th>Action</th></tr></thead><tbody>${rows||'<tr><td colspan="5">No attendance records found for selected dates.</td></tr>'}</tbody></table></div>`;
+    document.querySelectorAll('.range-cal').forEach(b=>b.onclick=()=>renderCalendar(b.dataset.code));
+  }
+  function renderCalendar(code){
+    const content=document.getElementById('content'),e=(rangeData.employees||[]).find(x=>x.employee_code===code),rows=(rangeData.attendance||[]).filter(a=>a.employee_code===code).sort((a,b)=>String(a.attendance_date).localeCompare(String(b.attendance_date)));
+    content.innerHTML=`<div class="section"><button class="ghost" id="rangeBack">← Back</button><div class="hero"><div><div class="eyebrow">EMPLOYEE ATTENDANCE</div><h3>${esc(e?.employee_name||code)}</h3><div class="muted">${esc(code)} · ${esc(start)} to ${esc(end)}</div></div></div><div class="table-wrap"><table class="table"><thead><tr><th>Date</th><th>Final</th><th>BIO</th><th>TOS</th></tr></thead><tbody>${rows.length?rows.map(r=>`<tr><td>${esc(r.attendance_date)}</td><td>${status(r.final_status)}</td><td>${status(r.bio_status)}</td><td>${status(r.tos_status)}</td></tr>`).join(''):'<tr><td colspan="4">No attendance records.</td></tr>'}</tbody></table></div></div>`;
+    document.getElementById('rangeBack').onclick=renderRangeAttendance;
+  }
   const css=document.createElement('style');css.textContent='.date-filter{display:block!important;padding:0 24px!important}.date-filter-inner{display:flex;align-items:end;gap:12px;padding:12px 14px;margin:0 0 4px;border:1px solid rgba(128,128,128,.22);border-radius:12px;background:var(--card,#fff);box-shadow:0 2px 10px rgba(0,0,0,.05);flex-wrap:wrap}.date-filter-label{font-size:11px;letter-spacing:.08em;opacity:.7}.date-filter-inner label{font-size:11px;font-weight:700;display:flex;flex-direction:column;gap:5px}.date-filter-inner input{height:36px;padding:0 10px;border:1px solid rgba(128,128,128,.35);border-radius:8px;background:transparent;color:inherit}.date-filter-inner button{height:36px;padding:0 14px;cursor:pointer}@media(max-width:700px){.date-filter{padding:0 12px!important}.date-filter-inner{align-items:stretch}.date-filter-inner label{flex:1;min-width:130px}.date-filter-inner button{flex:1}}';document.head.appendChild(css);
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',build);else build();
-  getRangeData().then(()=>{document.querySelectorAll('.nav-item[data-page="attendance"]').forEach(n=>n.addEventListener('click',()=>setTimeout(renderRangeAttendance,50),true));const page=sessionStorage.getItem(PAGE_KEY);if(page){sessionStorage.removeItem(PAGE_KEY);setTimeout(()=>{if(page==='attendance')renderRangeAttendance();else document.querySelector(`.nav-item[data-page="${page}"]`)?.click()},1200)}});
+  loadRange().then(()=>{
+    document.querySelectorAll('.nav-item[data-page="attendance"]').forEach(n=>n.addEventListener('click',()=>setTimeout(renderRangeAttendance,250),true));
+    const page=sessionStorage.getItem(PAGE_KEY);if(page){sessionStorage.removeItem(PAGE_KEY);setTimeout(()=>{if(page==='attendance')renderRangeAttendance();else document.querySelector(`.nav-item[data-page="${page}"]`)?.click()},1200)}
+  });
 })();
